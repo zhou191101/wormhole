@@ -30,11 +30,15 @@ import edp.wormhole.util.DateUtils._
 import edp.wormhole.util.DtFormat
 import edp.wormhole.util.JsonUtils._
 import spray.json.JsonParser
+
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.collection.mutable.{HashMap, ListBuffer}
 import scala.concurrent.Await
 import scalaj.http.{Http, HttpResponse}
 import slick.jdbc.MySQLProfile.api._
+
+import scala.collection.mutable
+import sys.process._
 
 object YarnStatusQuery extends RiderLogger {
 
@@ -80,10 +84,40 @@ object YarnStatusQuery extends RiderLogger {
     val rmUrl = getActiveResourceManager(RiderConfig.spark.rm1Url, RiderConfig.spark.rm2Url)
     //val queueName = RiderConfig.flink.yarnQueueName
     if (rmUrl != "") {
-      val url = s"http://${rmUrl.stripPrefix("http://").stripSuffix("/")}/ws/v1/cluster/apps?states=accepted,running,killed,failed,finished&startedTimeBegin=$fromTimeLong&applicationTypes=spark,apache%20flink"
-      //      riderLogger.info(s"Spark Application refresh yarn rest url: $url")
-      queryAppListOnYarn(url, appNames)
+      queryAppInfo(appNames)
+//      if (rmUrl.startsWith("https")) {
+//        queryAppInfo(appNames)
+//      } else {
+//        val url = s"http://${rmUrl.stripPrefix("http://").stripSuffix("/")}/ws/v1/cluster/apps?states=accepted,running,killed,failed,finished&startedTimeBegin=$fromTimeLong&applicationTypes=spark,apache%20flink"
+//        //      riderLogger.info(s"Spark Application refresh yarn rest url: $url")
+//        queryAppListOnYarn(url, appNames)
+//      }
     } else Map.empty[String, AppResult]
+  }
+
+  private def queryAppInfo(appNames: Seq[String]): Map[String, AppResult] = {
+    val resultMap = mutable.HashMap.empty[String, AppResult]
+    val rs = "yarn application -appStates ALL -list".!!
+
+    rs.split("\n")
+      .filter(app => app.startsWith("application_") && appNames.contains(app.split("\t")(1).trim))
+      .foreach(app => {
+        val info = app.split("\t")
+        val appName = info(1).trim
+        val appStatus = s"yarn application -status ${info(0)}".!!.split("\n")
+        val finalState = appStatus.filter(_.trim.startsWith("Final-State"))(0).split(":")(1).trim
+        val startTime = formatTime(appStatus.filter(_.trim.startsWith("Start-Time"))(0).split(":")(1).trim.toLong)
+        val finishTime = formatTime(appStatus.filter(_.trim.startsWith("Finish-Time"))(0).split(":")(1).trim.toLong)
+        if (resultMap.contains(appName)) {
+          if (startTime > resultMap(appName).startedTime) {
+            resultMap += appName -> AppResult(info(0).trim, appName, info(5).trim, finalState, startTime, finishTime)
+          }
+        } else {
+          resultMap += appName -> AppResult(info(0).trim, appName, info(5).trim, finalState, startTime, finishTime)
+        }
+      })
+
+    resultMap.toMap
   }
 
   private def queryAppListOnYarn(url: String, appNames: Seq[String]): Map[String, AppResult] = {
@@ -209,12 +243,17 @@ object YarnStatusQuery extends RiderLogger {
   }
 
   def getFlinkJobStatusOnYarn(appIds: Seq[String]): Map[String, FlinkJobStatus] = {
-    val activeRm = getActiveResourceManager(RiderConfig.spark.rm1Url, RiderConfig.spark.rm2Url)
-    val amUrl = getAmUrl(activeRm)
+    //val activeRm = getActiveResourceManager(RiderConfig.spark.rm1Url, RiderConfig.spark.rm2Url)
+    //val amUrl = getAmUrl(activeRm)
     val flinkJobMap = HashMap.empty[String, FlinkJobStatus]
     appIds.foreach {
       appId =>
-        val url = s"http://$amUrl/proxy/$appId/jobs/overview"
+        val appStatus = s"yarn application -status ${appId}".!!
+        val url = appStatus.split("\n")
+          .filter(_.trim.startsWith("Tracking-URL"))(0)
+          .substring(15)
+          .trim + "/jobs/overview"
+        // val url = s"http://$amUrl/proxy/$appId/jobs/overview"
         var retryNum = 0
         var response: HttpResponse[String] = HttpResponse("", 200, null)
         while (retryNum < 3) {

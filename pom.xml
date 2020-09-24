@@ -92,7 +92,7 @@
         <fastjson.version>1.2.58</fastjson.version>
         <hikariCP.version>3.3.1</hikariCP.version>
         <hash.version>0.9</hash.version>
-        <spark.extension.version>2.2</spark.extension.version>
+        <spark.extension.version>2.3</spark.extension.version>
         <!--<json4s.version>3.5.3</json4s.version>-->
         <json4s.version>3.2.11</json4s.version>
 
@@ -128,10 +128,6 @@
         <repository>
             <id>conjars</id>
             <url>http://conjars.org/repo/</url>
-        </repository>
-        <repository>
-            <id>creditease</id>
-            <url>${public.url}</url>
         </repository>
     </repositories>
 

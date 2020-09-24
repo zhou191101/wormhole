@@ -44,7 +44,7 @@ import edp.rider.kafka.WormholeGetOffsetUtils._
 import edp.wormhole.util.JsonUtils
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
-
+import sys.process._
 import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
 import scala.concurrent.Await
@@ -90,11 +90,14 @@ object StreamUtils extends RiderLogger {
   }
 
   def getYarnUri(status: String, appId: String): String = {
-    val rmUrl = getActiveResourceManager(RiderConfig.spark.rm1Url, RiderConfig.spark.rm2Url)
-    if (status.toLowerCase == "running")
-      s"http://${rmUrl.stripPrefix("http://").stripSuffix("/")}/proxy/$appId/"
-    else
-      s"http://${rmUrl.stripPrefix("http://").stripSuffix("/")}/cluster/app/$appId/"
+    val appStatus = s"yarn application -status $appId".!!
+    appStatus.split("\n").filter(_.trim.startsWith("Tracking-URL"))(0).substring(15).trim
+    //val rmUrl = getActiveResourceManager(RiderConfig.spark.rm1Url, RiderConfig.spark.rm2Url)
+    //    if (status.toLowerCase == "running")
+    //      s"http://${rmUrl.stripPrefix("http://").stripSuffix("/")}/proxy/$appId/"
+    //    else
+    //      s"http://${rmUrl.stripPrefix("http://").stripSuffix("/")}/cluster/app/$appId/"
+
   }
 
   def getStreamYarnAppStatus(streams: Seq[Stream], appInfoMap: Map[String, AppResult], userId: Long) = {
@@ -218,7 +221,7 @@ object StreamUtils extends RiderLogger {
             RiderConfig.spark.remoteHdfsRoot, RiderConfig.kerberos.kafkaEnabled, RiderConfig.spark.remoteHdfsNamenodeHosts,
             RiderConfig.spark.remoteHdfsNamenodeIds, Option(false))
         case None =>
-         // val (hdfsNameNodeIds,hdfsNameNodeHosts)=getNameNodeInfoFromLocalHadoop()
+          // val (hdfsNameNodeIds,hdfsNameNodeHosts)=getNameNodeInfoFromLocalHadoop()
           BatchFlowConfig(KafkaInputBaseConfig(stream.name, launchConfig.durations.toInt, inputKafkaInstance._1, inputKafkaKerberos, launchConfig.maxRecords.toInt * 1024 * 1024, RiderConfig.spark.kafkaSessionTimeOut, RiderConfig.spark.kafkaGroupMaxSessionTimeOut),
             KafkaOutputConfig(RiderConfig.consumer.feedbackTopic, RiderConfig.consumer.brokers, RiderConfig.kerberos.kafkaEnabled),
             SparkConfig(stream.id, stream.name, "yarn", launchConfig.partitions.toInt),
@@ -231,28 +234,28 @@ object StreamUtils extends RiderLogger {
   def getStreamSpecialConfig(config: Option[String]): Option[StreamSpecialConfig] = {
     config match {
       case Some(c) =>
-        if(c.trim.isEmpty) None
+        if (c.trim.isEmpty) None
         else Option(JsonUtils.json2caseClass[StreamSpecialConfig](c))
       case None =>
         None
     }
   }
 
-/*
-  def getNameNodeInfoFromLocalHadoop()={
-    val hadoopHome = System.getenv("HADOOP_HOME")
-    val configuration = new Configuration(false)
-    configuration.addResource(new Path(s"$hadoopHome/conf/hdfs-site.xml"))
-    val nameServiceNameInternal=configuration.get("dfs.internal.nameservices")
-    //val nameServiceNameNoInternal=configuration.get("dfs.nameservices")
-    val nameServiceName = if(null != nameServiceNameInternal && nameServiceNameInternal != "") nameServiceNameInternal else configuration.get("dfs.nameservices")
+  /*
+    def getNameNodeInfoFromLocalHadoop()={
+      val hadoopHome = System.getenv("HADOOP_HOME")
+      val configuration = new Configuration(false)
+      configuration.addResource(new Path(s"$hadoopHome/conf/hdfs-site.xml"))
+      val nameServiceNameInternal=configuration.get("dfs.internal.nameservices")
+      //val nameServiceNameNoInternal=configuration.get("dfs.nameservices")
+      val nameServiceName = if(null != nameServiceNameInternal && nameServiceNameInternal != "") nameServiceNameInternal else configuration.get("dfs.nameservices")
 
-    val nameNodeIds = configuration.get(s"dfs.ha.namenodes.$nameServiceName")
-    val nameNodeHosts = nameNodeIds.split(",").map(nodeId => configuration.get(s"dfs.namenode.rpc-address.$nameServiceName.$nodeId")).mkString(",")
-    riderLogger.info(s"serviceName:$nameServiceName,nodeIds:$nameNodeIds,nodeHosts:$nameNodeHosts")
-    (nameNodeIds , nameNodeHosts)
-  }
-*/
+      val nameNodeIds = configuration.get(s"dfs.ha.namenodes.$nameServiceName")
+      val nameNodeHosts = nameNodeIds.split(",").map(nodeId => configuration.get(s"dfs.namenode.rpc-address.$nameServiceName.$nodeId")).mkString(",")
+      riderLogger.info(s"serviceName:$nameServiceName,nodeIds:$nameNodeIds,nodeHosts:$nameNodeHosts")
+      (nameNodeIds , nameNodeHosts)
+    }
+  */
 
   def startStream(stream: Stream, logPath: String): (Boolean, Option[String]) = {
     StreamType.withName(stream.streamType) match {
