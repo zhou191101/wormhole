@@ -41,7 +41,7 @@ import edp.wormhole.util.DateUtils._
 import edp.wormhole.util.JsonUtils._
 import edp.wormhole.util.config.{ConnectionConfig, KVConfig}
 import slick.jdbc.MySQLProfile.api._
-
+import sys.process._
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.concurrent.Await
@@ -228,7 +228,7 @@ object FlowUtils extends RiderLogger {
           case "phoenix" => "edp.wormhole.sinks.phoenixsink.Data2PhoenixSink"
           case "parquet" => ""
           case "kudu" => "edp.wormhole.sinks.kudusink.Data2KuduSink"
-          case "redis" =>"edp.wormhole.sinks.redissink.Data2RedisSink"
+          case "redis" => "edp.wormhole.sinks.redissink.Data2RedisSink"
           case "rocketmq" =>
             if (sinkSchema.nonEmpty && sinkSchema.get != "") "edp.wormhole.sinks.rocketmqsink.DataJson2RocketMQSink"
             else "edp.wormhole.sinks.rocketmqsink.Data2RocketMQSink"
@@ -373,7 +373,7 @@ object FlowUtils extends RiderLogger {
           FlowInfo(flowStream.id, flowStream.status, flowStream.disableActions, flowStream.startedTime, flowStream.stoppedTime, s"$action isn't supported.")
       }
     }
-    if(flowInfo.flowStatus == flowStream.status && (!(flowStream.streamType == StreamType.FLINK.toString && flowStream.streamStatus == "running"))) {
+    if (flowInfo.flowStatus == flowStream.status && (!(flowStream.streamType == StreamType.FLINK.toString && flowStream.streamStatus == "running"))) {
       new FlowInfo(flowInfo.id, flowInfo.flowStatus, flowInfo.disableActions, flowInfo.startTime, flowInfo.stopTime, flowInfo.msg, false)
     } else flowInfo
   }
@@ -691,7 +691,7 @@ object FlowUtils extends RiderLogger {
         } send flow $flowId start directive: $flow_start_ums")
         PushDirective.sendHdfsLogFlowStartDirective(flowId, streamId, sourceNs, jsonCompact(flow_start_ums))
         //        riderLogger.info(s"user ${directive.createBy} send ${DIRECTIVE_HDFSLOG_FLOW_START.toString} directive to ${RiderConfig.zk.address} success.")
-      } else if(functionType == "hdfscsv"){
+      } else if (functionType == "hdfscsv") {
         val base64Tuple = Seq(streamId, flowId, currentMillSec, sourceNs, "24", umsType,
           base64byte2s(umsSchema.toString.trim.getBytes), sourceIncrementTopic,
           if (flowOpt.nonEmpty) flowOpt.get.priorityId else 0L)
@@ -789,7 +789,7 @@ object FlowUtils extends RiderLogger {
           directive.createBy
         } send flow $flowId start directive: $flow_start_ums")
         PushDirective.sendHdfsCsvStartDirective(flowId, streamId, sourceNs, jsonCompact(flow_start_ums))
-      }else if (functionType == "routing") {
+      } else if (functionType == "routing") {
         val (instance, db, _) = namespaceDal.getNsDetail(sinkNs)
         val tuple = Seq(streamId, flowId, currentMillSec, umsType, sinkNs, instance.connUrl, db.nsDatabase, sourceIncrementTopic, if (flowOpt.nonEmpty) flowOpt.get.priorityId else 0L)
         val directive = Await.result(directiveDal.insert(Directive(0, DIRECTIVE_ROUTER_FLOW_START.toString, streamId, flowId, "", RiderConfig.zk.address, currentSec, userId)), minTimeOut)
@@ -1244,7 +1244,7 @@ object FlowUtils extends RiderLogger {
     }
 
     val base64Tuple = Seq(flow.streamId, flow.id, currentNodMicroSec, umsType, base64byte2s(umsSchema.toString.trim.getBytes), flow.sinkNs, base64byte2s(consumedProtocol.trim.getBytes),
-      base64byte2s(sinkConfig.trim.getBytes), base64byte2s(tranConfigFinal.trim.getBytes),base64byte2s(flow.config.get.trim.getBytes))
+      base64byte2s(sinkConfig.trim.getBytes), base64byte2s(tranConfigFinal.trim.getBytes), base64byte2s(flow.config.get.trim.getBytes))
     val directive = Await.result(directiveDal.insert(Directive(0, DIRECTIVE_FLOW_START.toString, flow.streamId, flow.id, "", RiderConfig.zk.address, currentSec, flow.updateBy)), minTimeOut)
     //        riderLogger.info(s"user ${directive.createBy} insert ${DIRECTIVE_FLOW_START.toString} success.")
 
@@ -1339,7 +1339,8 @@ object FlowUtils extends RiderLogger {
       }", "${
         base64Tuple(8)
       }", "${
-        base64Tuple(9)}"]
+        base64Tuple(9)
+      }"]
          |}
          |]
          |}
@@ -1378,8 +1379,15 @@ object FlowUtils extends RiderLogger {
   def stopFlinkFlow(appId: String, flowName: String): Boolean = {
     try {
       val jobId = getFlinkJobStatusOnYarn(Seq(appId))(flowName).jobId
-      val activeRm = getActiveResourceManager(RiderConfig.spark.rm1Url, RiderConfig.spark.rm2Url)
-      val url = s"http://$activeRm/proxy/$appId/jobs/$jobId/yarn-cancel"
+
+      val appStatus = s"yarn application -status $appId".!!
+      val trackUrl = appStatus.split("\n")
+        .filter(_.trim.startsWith("Tracking-URL"))(0)
+        .substring(15)
+        .trim
+      // val activeRm = getActiveResourceManager(RiderConfig.spark.rm1Url, RiderConfig.spark.rm2Url)
+      // val url = s"http://$activeRm/proxy/$appId/jobs/$jobId/yarn-cancel"
+      val url = s"$trackUrl/jobs/$jobId/yarn-cancel"
       val response: HttpResponse[String] = Http(url).header("Accept", "application/json").timeout(10000, 1000).asString
       if (response.isSuccess) {
         riderLogger.info(s"stop flink flow $flowName success.")
@@ -1462,10 +1470,10 @@ object FlowUtils extends RiderLogger {
   def getFlowStatusByLog(flowName: String, logPath: String, preStatus: String): String = {
     val failedPattern = "The program finished with the following exception".r
     val fatalErrorPattern = "Fatal error while running command line interface".r
-    val noJarFoundPattern="Could not build the program from JAR file".r
+    val noJarFoundPattern = "Could not build the program from JAR file".r
     try {
       val fileLines = YarnClientLog.getLogByAppName(flowName, logPath)
-      if (failedPattern.findFirstIn(fileLines).nonEmpty||fatalErrorPattern.findFirstIn(fileLines).nonEmpty||noJarFoundPattern.findFirstIn(fileLines).nonEmpty)
+      if (failedPattern.findFirstIn(fileLines).nonEmpty || fatalErrorPattern.findFirstIn(fileLines).nonEmpty || noJarFoundPattern.findFirstIn(fileLines).nonEmpty)
         FlowStatus.FAILED.toString
       else preStatus
     }

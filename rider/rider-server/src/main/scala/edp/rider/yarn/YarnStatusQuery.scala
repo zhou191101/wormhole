@@ -81,10 +81,10 @@ object YarnStatusQuery extends RiderLogger {
       if (fromTime == "") 0
       else if (fromTime.length > 19) dt2long(fromTime) / 1000
       else if (fromTime.length < 19) dt2long(fromTime)
-    val rmUrl = getActiveResourceManager(RiderConfig.spark.rm1Url, RiderConfig.spark.rm2Url)
+    queryAppInfo(appNames)
+   //val rmUrl = getActiveResourceManager(RiderConfig.spark.rm1Url, RiderConfig.spark.rm2Url)
     //val queueName = RiderConfig.flink.yarnQueueName
-    if (rmUrl != "") {
-      queryAppInfo(appNames)
+//    if (rmUrl != "") {
 //      if (rmUrl.startsWith("https")) {
 //        queryAppInfo(appNames)
 //      } else {
@@ -92,7 +92,7 @@ object YarnStatusQuery extends RiderLogger {
 //        //      riderLogger.info(s"Spark Application refresh yarn rest url: $url")
 //        queryAppListOnYarn(url, appNames)
 //      }
-    } else Map.empty[String, AppResult]
+//    } else Map.empty[String, AppResult]
   }
 
   private def queryAppInfo(appNames: Seq[String]): Map[String, AppResult] = {
