@@ -181,6 +181,7 @@ object StreamUtils extends RiderLogger {
             resStatus
           }
         }
+        riderLogger.info("update info: "+appInfo)
         stream.updateFromSpark(appInfo)
       })
   }

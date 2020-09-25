@@ -61,13 +61,13 @@ object YarnClientLog extends RiderLogger {
       val appId = if (appIdList.nonEmpty) appIdList.last.stripPrefix("Application report for").trim else curAppId
       val hasException = fileLines.count(s => s.toLowerCase contains "exception in thread")
       val noFileExists = fileLines.count(s => s.toLowerCase contains "no such file")
-      val lostClass=fileLines.count(s => s.toLowerCase contains "could not find")
-//      val isRunning = fileLines.count(s => s contains s"(state: $RUNNING)")
-//      val isAccepted = fileLines.count(s => s contains s"(state: $ACCEPTED)")
-//      val isFinished = fileLines.count(s => s contains s"((state: $FINISHED))")
+      val lostClass = fileLines.count(s => s.toLowerCase contains "could not find")
+      //      val isRunning = fileLines.count(s => s contains s"(state: $RUNNING)")
+      //      val isAccepted = fileLines.count(s => s contains s"(state: $ACCEPTED)")
+      //      val isFinished = fileLines.count(s => s contains s"((state: $FINISHED))")
 
       val status =
-        if (noFileExists > 0 ||hasException > 0 ||lostClass > 0) StreamStatus.FAILED.toString
+        if (noFileExists > 0 || hasException > 0 || lostClass > 0) StreamStatus.FAILED.toString
         else curStatus
       (appId, status)
     }
@@ -78,7 +78,7 @@ object YarnClientLog extends RiderLogger {
     }
   }
 
-  def getFlinkAppStatusByLog(appName: String, curStatus: String, logPath: String, curAppId: String) : (String,String)={
+  def getFlinkAppStatusByLog(appName: String, curStatus: String, logPath: String, curAppId: String): (String, String) = {
     assert(appName != "" && appName != null, "Refresh Flink Application log, app name couldn't be null or blank.")
     val appIdPattern = "Submitted application application_([0-9]){13}_([0-9]){4}".r
     try {
@@ -86,16 +86,18 @@ object YarnClientLog extends RiderLogger {
       val appIdList = appIdPattern.findAllIn(fileLines.mkString("\\n")).toList
       val appId = if (appIdList.nonEmpty) appIdList.last.stripPrefix("Submitted application").trim else curAppId
       val isFailed = fileLines.count(s => s.toLowerCase contains s"the flink yarn cluster has failed")
-      val isSubmitFailed=fileLines.count(s => s.toLowerCase contains s"the program finished with the following exception")
+      val isSubmitFailed = fileLines.count(s => s.toLowerCase contains s"the program finished with the following exception")
       val noFileExists = fileLines.count(s => s.toLowerCase contains "no such file")
-      val lostClass=fileLines.count(s => s.toLowerCase contains "could not find")
-//      val isRunning = fileLines.count(s => s contains s"Flink JobManager is now running on")
-//      val isAccepted = fileLines.count(s => s contains s"YARN application has been deployed successfully")
-//      val isFinished = if(appId == "") 0 else fileLines.count(s => s contains s"Application $appId finished")
+      val lostClass = fileLines.count(s => s.toLowerCase contains "could not find")
+      //      val isRunning = fileLines.count(s => s contains s"Flink JobManager is now running on")
+      //      val isAccepted = fileLines.count(s => s contains s"YARN application has been deployed successfully")
+      //      val isFinished = if(appId == "") 0 else fileLines.count(s => s contains s"Application $appId finished")
 
       val status =
-        if (noFileExists > 0 ||isFailed > 0 || isSubmitFailed > 0 || lostClass > 0) StreamStatus.FAILED.toString
+        if (noFileExists > 0 || isFailed > 0 || isSubmitFailed > 0 || lostClass > 0) StreamStatus.FAILED.toString
         else curStatus
+      riderLogger.info("appId: " + appId)
+      riderLogger.info("status: " + status)
       (appId, status)
     }
     catch {

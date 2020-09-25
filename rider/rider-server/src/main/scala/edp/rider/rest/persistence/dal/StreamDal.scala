@@ -67,7 +67,7 @@ class StreamDal(streamTable: TableQuery[StreamTable],
         true
       }
     })
-    //riderLogger.info(s"updateStreamSeq ${updateStreamSeq}")
+    riderLogger.info(s"updateStreamSeq ${updateStreamSeq}")
     updateByRefresh(updateStreamSeq)
     refreshStreamSeq.map(stream => (stream.id, StreamInfo(stream.name, stream.sparkAppid, stream.streamType, stream.functionType, stream.status))).toMap
   }
