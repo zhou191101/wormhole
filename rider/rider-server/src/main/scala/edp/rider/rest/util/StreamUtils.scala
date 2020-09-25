@@ -32,7 +32,7 @@ import edp.rider.rest.util.CommonUtils._
 import edp.rider.rest.util.UdfUtils.sendUdfDirective
 import edp.rider.wormhole.{BatchFlowConfig, KafkaInputBaseConfig, KafkaOutputConfig, SparkConfig}
 import edp.rider.yarn.SubmitYarnJob._
-import edp.rider.yarn.YarnStatusQuery.{getActiveResourceManager, getAllYarnAppStatus, getAppStatusByRest}
+import edp.rider.yarn.YarnStatusQuery.{getAllYarnAppStatus, getAppStatusByRest}
 import edp.rider.yarn.{ShellUtils, SubmitYarnJob, YarnClientLog}
 import edp.rider.zookeeper.PushDirective
 import edp.rider.zookeeper.PushDirective._
@@ -42,8 +42,6 @@ import edp.wormhole.util.JsonUtils._
 import slick.jdbc.MySQLProfile.api._
 import edp.rider.kafka.WormholeGetOffsetUtils._
 import edp.wormhole.util.JsonUtils
-import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.fs.Path
 import sys.process._
 import scala.collection.mutable
 import scala.collection.mutable.{ArrayBuffer, ListBuffer}
@@ -83,8 +81,8 @@ object StreamUtils extends RiderLogger {
     }
   }
 
-  def getAppInfo(fromTime: String, streamName: String): Option[AppResult] = {
-    val appInfoMap: Map[String, AppResult] = if (fromTime == "") Map.empty[String, AppResult] else getAllYarnAppStatus(fromTime, Seq(streamName))
+  def getAppInfo(streamName: String): Option[AppResult] = {
+    val appInfoMap: Map[String, AppResult] = getAllYarnAppStatus(Seq(streamName))
     if (appInfoMap.contains(streamName)) Some(appInfoMap(streamName))
     else None
   }
@@ -181,7 +179,7 @@ object StreamUtils extends RiderLogger {
             resStatus
           }
         }
-        riderLogger.info("update info: "+appInfo)
+        riderLogger.info("update info: " + appInfo)
         stream.updateFromSpark(appInfo)
       })
   }

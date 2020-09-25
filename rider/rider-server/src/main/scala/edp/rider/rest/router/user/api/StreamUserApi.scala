@@ -852,7 +852,7 @@ class StreamUserApi(jobDal: JobDal, streamDal: StreamDal, projectDal: ProjectDal
               if (session.projectIdList.contains(id)) {
                 Await.result(streamDal.findById(streamId), minTimeOut) match {
                   case Some(stream) =>
-                    StreamUtils.getAppInfo(stream.startedTime.getOrElse(""), stream.name) match {
+                    StreamUtils.getAppInfo(stream.name) match {
                       case Some(appInfo) =>
                         complete(OK, ResponseJson[String](getHeader(200, session), getYarnUri(appInfo.appStatus, appInfo.appId)))
                       case _ =>

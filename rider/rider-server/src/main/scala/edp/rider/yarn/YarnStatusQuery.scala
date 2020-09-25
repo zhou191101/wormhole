@@ -50,7 +50,7 @@ object YarnStatusQuery extends RiderLogger {
 
     val nameSet = streamsNameSet ++ jobsNameSet
     val fromTime = getYarnFromTime(streams, jobs)
-    val appInfoMap: Map[String, AppResult] = if (fromTime == "") Map.empty[String, AppResult] else getAllYarnAppStatus(fromTime, nameSet)
+    val appInfoMap: Map[String, AppResult] = getAllYarnAppStatus(nameSet)
 
     //riderLogger.info(s"appInfoMap $appInfoMap")
     val admin = Await.result(userDal.findByFilter(_.roleType === "admin").map(_.head.id), minTimeOut)
@@ -76,23 +76,8 @@ object YarnStatusQuery extends RiderLogger {
     else streamFromTime
   }
 
-  def getAllYarnAppStatus(fromTime: String, appNames: Seq[String]): Map[String, AppResult] = {
-    val fromTimeLong =
-      if (fromTime == "") 0
-      else if (fromTime.length > 19) dt2long(fromTime) / 1000
-      else if (fromTime.length < 19) dt2long(fromTime)
+  def getAllYarnAppStatus(appNames: Seq[String]): Map[String, AppResult] = {
     queryAppInfo(appNames)
-    //val rmUrl = getActiveResourceManager(RiderConfig.spark.rm1Url, RiderConfig.spark.rm2Url)
-    //val queueName = RiderConfig.flink.yarnQueueName
-    //    if (rmUrl != "") {
-    //      if (rmUrl.startsWith("https")) {
-    //        queryAppInfo(appNames)
-    //      } else {
-    //        val url = s"http://${rmUrl.stripPrefix("http://").stripSuffix("/")}/ws/v1/cluster/apps?states=accepted,running,killed,failed,finished&startedTimeBegin=$fromTimeLong&applicationTypes=spark,apache%20flink"
-    //        //      riderLogger.info(s"Spark Application refresh yarn rest url: $url")
-    //        queryAppListOnYarn(url, appNames)
-    //      }
-    //    } else Map.empty[String, AppResult]
   }
 
   private def queryAppInfo(appNames: Seq[String]): Map[String, AppResult] = {
@@ -105,74 +90,17 @@ object YarnStatusQuery extends RiderLogger {
         val info = app.split("\t")
         val appName = info(1).trim
         val appStatus = s"yarn application -status ${info(0)}".!!.split("\n")
+        val appId = info(0).trim
+        val state = appStatus.filter(_.trim.startsWith("State"))(0).split(":")(1).trim
         val finalState = appStatus.filter(_.trim.startsWith("Final-State"))(0).split(":")(1).trim
         val startTime = formatTime(appStatus.filter(_.trim.startsWith("Start-Time"))(0).split(":")(1).trim.toLong)
         val finishTime = formatTime(appStatus.filter(_.trim.startsWith("Finish-Time"))(0).split(":")(1).trim.toLong)
-        if (resultMap.contains(appName)) {
-          if (startTime > resultMap(appName).startedTime) {
-            resultMap += appName -> AppResult(info(0).trim, appName, info(5).trim, finalState, startTime, finishTime)
-          }
-        } else {
-          resultMap += appName -> AppResult(info(0).trim, appName, info(5).trim, finalState, startTime, finishTime)
+        if (!resultMap.contains(appName) || startTime > resultMap(appName).startedTime) {
+          resultMap += appName -> AppResult(appId, appName, state, finalState, startTime, finishTime)
         }
       })
 
     resultMap.toMap
-  }
-
-  private def queryAppListOnYarn(url: String, appNames: Seq[String]): Map[String, AppResult] = {
-    var resultMap = Map.empty[String, AppResult]
-    try {
-      val response: HttpResponse[String] = Http(url).header("Accept", "application/json").timeout(10000, 1000).asString
-      resultMap = queryAppOnYarn(response, appNames)
-    } catch {
-      case e: Exception =>
-        riderLogger.error(s"Spark Application refresh yarn rest url $url failed", e)
-    }
-    resultMap
-  }
-
-  private def queryAppOnYarn(response: HttpResponse[String], appNames: Seq[String]): Map[String, AppResult] = {
-    val resultMap = HashMap.empty[String, AppResult]
-    try {
-      val json = JsonParser.apply(response.body).toString()
-      if (JSON.parseObject(json).containsKey("apps")) {
-        val app = JSON.parseObject(json).getString("apps")
-        if (app != "" && app != null && JSON.parseObject(app).containsKey("app")) {
-          val appSeq = JSON.parseObject(app).getJSONArray("app")
-          for (i <- 0 until appSeq.size()) {
-            val info = appSeq.getString(i)
-            val name = JSON.parseObject(info).getString("name")
-            val startedTime = formatTime(JSON.parseObject(info).getLong("startedTime"))
-            if (appNames.contains(name)) {
-              if (resultMap.contains(name)) {
-                if (startedTime > resultMap(name).startedTime) {
-                  resultMap(name) = AppResult(JSON.parseObject(info).getString("id"),
-                    name,
-                    JSON.parseObject(info).getString("state"),
-                    JSON.parseObject(info).getString("finalStatus"),
-                    startedTime, formatTime(JSON.parseObject(info).getLong("finishedTime"))
-                  )
-                }
-              } else {
-                resultMap(name) = AppResult(JSON.parseObject(info).getString("id"),
-                  name,
-                  JSON.parseObject(info).getString("state"),
-                  JSON.parseObject(info).getString("finalStatus"),
-                  startedTime, formatTime(JSON.parseObject(info).getLong("finishedTime"))
-                )
-              }
-            }
-          }
-        }
-      }
-      //riderLogger.info(s"Spark Application refresh yarn rest api response resultMap: $resultMap")
-      resultMap.toMap
-    } catch {
-      case ex: Exception =>
-        riderLogger.error(s"Spark Application refresh yarn rest api response failed", ex)
-        resultMap.toMap
-    }
   }
 
   def getAppStatusByRest(map: Map[String, AppResult], appId: String, appName: String, curStatus: String, startedTime: String, stoppedTime: String): AppInfo = {
@@ -200,12 +128,6 @@ object YarnStatusQuery extends RiderLogger {
       AppInfo(result.appId, result.appStatus, result.startedTime, result.finishedTime)
   }
 
-  private def queryAppListOnStandalone(response: HttpResponse[String]): List[AppResult] = {
-    val resultList: ListBuffer[AppResult] = new ListBuffer()
-    val masterStateResponse: MasterStateResponse = json2caseClass[MasterStateResponse](response.body)
-    masterStateResponse.activeApps.foreach(m => resultList.append(AppResult(m.id, m.name, m.state, m.finalState, m.startTime.toString, m.duration.toString)))
-    resultList.toList
-  }
 
   def getActiveResourceManager(rm1: String, rm2: String): String = {
     if (getResourceManagerHaState(rm1).toUpperCase == "ACTIVE")
@@ -235,17 +157,9 @@ object YarnStatusQuery extends RiderLogger {
     }
   }
 
-  private def getAmUrl(activeRm: String): String = {
-    if (RiderConfig.spark.proxyPort == 0) {
-      activeRm
-    } else {
-      activeRm.split(":")(0) + ":" + RiderConfig.spark.proxyPort
-    }
-  }
 
   def getFlinkJobStatusOnYarn(appIds: Seq[String]): Map[String, FlinkJobStatus] = {
-    //val activeRm = getActiveResourceManager(RiderConfig.spark.rm1Url, RiderConfig.spark.rm2Url)
-    //val amUrl = getAmUrl(activeRm)
+
     val flinkJobMap = HashMap.empty[String, FlinkJobStatus]
     appIds.foreach {
       appId =>
@@ -254,7 +168,6 @@ object YarnStatusQuery extends RiderLogger {
           .filter(_.trim.startsWith("Tracking-URL"))(0)
           .substring(15)
           .trim + "/jobs/overview"
-        // val url = s"http://$amUrl/proxy/$appId/jobs/overview"
         var retryNum = 0
         var response: HttpResponse[String] = HttpResponse("", 200, null)
         while (retryNum < 3) {
