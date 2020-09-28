@@ -86,20 +86,22 @@ object YarnStatusQuery extends RiderLogger {
 
     rs.split("\n")
       .filter(app => app.startsWith("application_") && appNames.contains(app.split("\t")(1).trim))
+      .map(app => (app.split("\t")(0).trim, app.split("\t")(1).trim))
+      .sortBy(_._1)
+      .reverse
       .foreach(app => {
-        val info = app.split("\t")
-        val appName = info(1).trim
-        val appStatus = s"yarn application -status ${info(0)}".!!.split("\n")
-        val appId = info(0).trim
-        val state = appStatus.filter(_.trim.startsWith("State"))(0).split(":")(1).trim
-        val finalState = appStatus.filter(_.trim.startsWith("Final-State"))(0).split(":")(1).trim
-        val startTime = formatTime(appStatus.filter(_.trim.startsWith("Start-Time"))(0).split(":")(1).trim.toLong)
-        val finishTime = formatTime(appStatus.filter(_.trim.startsWith("Finish-Time"))(0).split(":")(1).trim.toLong)
-        if (!resultMap.contains(appName) || startTime > resultMap(appName).startedTime) {
+        val appId = app._1
+        val appName = app._2
+        if (!resultMap.contains(appName)) {
+          val appStatus = s"yarn application -status ${appId}".!!.split("\n")
+          val state = appStatus.filter(_.trim.startsWith("State"))(0).split(":")(1).trim
+          val finalState = appStatus.filter(_.trim.startsWith("Final-State"))(0).split(":")(1).trim
+          val startTime = formatTime(appStatus.filter(_.trim.startsWith("Start-Time"))(0).split(":")(1).trim.toLong)
+          val finishTime = formatTime(appStatus.filter(_.trim.startsWith("Finish-Time"))(0).split(":")(1).trim.toLong)
           resultMap += appName -> AppResult(appId, appName, state, finalState, startTime, finishTime)
         }
-      })
-
+      }
+      )
     resultMap.toMap
   }
 
